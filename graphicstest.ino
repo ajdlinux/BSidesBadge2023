@@ -262,7 +262,7 @@ struct xpmHeader parseHeader(const char **xpm) {
 }
 
 struct colour {
-  char character;
+  char characters[2];
   uint16_t colour;
 };
 
@@ -273,30 +273,37 @@ struct colour {
 #define GREENSHIFT 5
 #define BLUESHIFT 0
 
-struct colour * parseColours(const char **colourText, int numColours) {
+struct colour * parseColours(const char **colourText, int numColours, int charsPerPixel) {
   struct colour *colours = (struct colour *)malloc(sizeof(struct colour) * numColours);
   if (!colours)
     return NULL;
   for (int i = 0; i < numColours; i++) {
     const char *line = colourText[i];
-    char character;
+    char characters[2];
     uint8_t r;
     uint8_t g;
     uint8_t b;
-    sscanf(line, "%c  c #%2hhx%2hhx%2hhx", &character, &r, &g, &b);
+    if (charsPerPixel == 1) {
+      sscanf(line, "%c c #%2hhx%2hhx%2hhx", &characters[0], &r, &g, &b);
+      characters[1] = 0;
+    } else if (charsPerPixel == 2) {
+      sscanf(line, "%c%c c #%2hhx%2hhx%2hhx", &characters[0], &characters[1], &r, &g, &b);
+    }
     uint8_t r5 = r >> (8-REDBITS);
     uint8_t g6 = g >> (8-GREENBITS);
     uint8_t b5 = b >> (8-BLUEBITS);
     uint16_t colour16 = (r5 << REDSHIFT) | (g6 << GREENSHIFT) | (b5 << BLUESHIFT);
 
-    colours[i] = { character, colour16 };
+    colours[i].characters[0] = characters[0];
+    colours[i].characters[1] = characters[1];
+    colours[i].colour = colour16;
   }
   return colours;
 }
 
-uint16_t getColour(struct colour *colours, int numColours, char character) {
+uint16_t getColour(struct colour *colours, int numColours, char characters[2]) {
   for (int i = 0; i < numColours; i++) {
-    if (colours[i].character == character)
+    if (colours[i].characters[0] == characters[0] && colours[i].characters[1] == characters[1])
       return colours[i].colour;
   }
   return 0;
@@ -326,12 +333,19 @@ void setup(void) {
   Serial.println(time, DEC);
 
   struct xpmHeader header = parseHeader(Untitled_xpm);
-  struct colour *colours = parseColours(Untitled_xpm + 1, header.numColours);
+  struct colour *colours = parseColours(Untitled_xpm + 1, header.numColours, header.charsPerPixel);
 
   for (int y = 0; y < header.height; y++) {
     for (int x = 0; x < header.width; x++) {
-      char character = Untitled_xpm[y + 1 + header.numColours][x];
-      uint16_t colour = getColour(colours, header.numColours, character);
+      char characters[2];
+      if (header.charsPerPixel == 1) {
+        characters[0] = Untitled_xpm[y + 1 + header.numColours][x];
+        characters[1] = 0;
+      } else if (header.charsPerPixel == 2) {
+        characters[0] = Untitled_xpm[y + 1 + header.numColours][x*2];
+        characters[1] = Untitled_xpm[y + 1 + header.numColours][x*2+1];
+      }
+      uint16_t colour = getColour(colours, header.numColours, characters);
       tft.drawPixel(x, y, colour);
     }
   }
