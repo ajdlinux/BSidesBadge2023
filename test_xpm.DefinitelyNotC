@@ -1,0 +1,97 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include "image.xpm"
+
+struct xpmHeader {
+  int width;
+  int height;
+  int numColours;
+  int charsPerPixel;
+};
+
+struct xpmHeader parseHeader(const char **xpm) {
+  struct xpmHeader header;
+  sscanf(xpm[0], "%d %d %d %d", &header.width, &header.height, &header.numColours, &header.charsPerPixel);
+  return header;
+}
+
+struct colour {
+  char characters[2];
+  uint16_t colour;
+};
+
+#define REDBITS 5
+#define GREENBITS 6
+#define BLUEBITS 5
+#define REDSHIFT 11
+#define GREENSHIFT 5
+#define BLUESHIFT 0
+
+struct colour * parseColours(const char **colourText, int numColours, int charsPerPixel) {
+  struct colour *colours = (struct colour *)malloc(sizeof(struct colour) * numColours);
+  if (!colours)
+    return NULL;
+  for (int i = 0; i < numColours; i++) {
+    const char *line = colourText[i];
+    char characters[2];
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    if (charsPerPixel == 1) {
+      sscanf(line, "%c c #%2hhx%2hhx%2hhx", &characters[0], &r, &g, &b);
+      characters[1] = 0;
+    } else if (charsPerPixel == 2) {
+      sscanf(line, "%c%c c #%2hhx%2hhx%2hhx", &characters[0], &characters[1], &r, &g, &b);
+    }
+    uint8_t r5 = r >> (8-REDBITS);
+    uint8_t g6 = g >> (8-GREENBITS);
+    uint8_t b5 = b >> (8-BLUEBITS);
+    uint16_t colour16 = (r5 << REDSHIFT) | (g6 << GREENSHIFT) | (b5 << BLUESHIFT);
+
+    colours[i].characters[0] = characters[0];
+    colours[i].characters[1] = characters[1];
+    colours[i].colour = colour16;
+    
+    printf("Colour %d: Character '%c%c', 16 Bit: %04x, Orig R: %02x, Orig G: %02x, Orig B: %02x\n", i, characters[0], characters[1], colour16, r, g, b);
+  }
+  return colours;
+}
+
+uint16_t getColour(struct colour *colours, int numColours, char characters[2]) {
+  for (int i = 0; i < numColours; i++) {
+    if (colours[i].characters[0] == characters[0] && colours[i].characters[1] == characters[1])
+      return colours[i].colour;
+  }
+  return 0;
+}
+
+int main() {
+    printf("Welcome to the test program\n");
+  struct xpmHeader header = parseHeader(xpm);
+  printf("Header parsed\n");
+  
+  printf("Width: %d, Height: %d, #Colours: %d, #Chars Per Pixel: %d\n", header.width, header.height, header.numColours, header.charsPerPixel);
+  
+  struct colour *colours = parseColours(xpm + 1, header.numColours, header.charsPerPixel);
+
+  for (int y = 0; y < header.height; y++) {
+    for (int x = 0; x < header.width; x++) {
+      char characters[2];
+      if (header.charsPerPixel == 1) {
+        characters[0] = xpm[y + 1 + header.numColours][x];
+        characters[1] = 0;
+      } else if (header.charsPerPixel == 2) {
+        characters[0] = xpm[y + 1 + header.numColours][x*2];
+        characters[1] = xpm[y + 1 + header.numColours][x*2+1];
+      }
+      uint16_t colour = getColour(colours, header.numColours, characters);
+      printf("X: %d, Y: %d, Character: '%c%c', Colour: %04x\n", x, y, characters[0], characters[1], colour);
+      //tft.drawPixel(x, y, colour);
+    }
+  }
+
+  free(colours);
+  
+  //tft.drawXBitmap(0, 0, Untitled_bits, Untitled_width, Untitled_height, 0xffff);
+}
